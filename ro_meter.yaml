@@ -90,14 +90,14 @@ font:
       family: Roboto Mono
       weight: 500
     id: font_small
-    size: 10
+    size: 12
     bpp: 1
   - file:
       type: gfonts
       family: Roboto Mono
       weight: 700
     id: font_medium
-    size: 10
+    size: 14
     bpp: 1
 
 globals:
@@ -365,13 +365,12 @@ display:
         ratio = id(waste_ratio_current).state;
       }
 
-      it.printf(0, 0, id(font_small), "%s", id(display_status).state.c_str());
-
       if (isnan(ratio)) {
-        it.printf(25, 0, id(font_medium), "R --");
+        it.printf(0, 0, id(font_small), "R --");
       } else {
-        it.printf(25, 0, id(font_medium), "R %.2f", ratio);
+        it.printf(0, 0, id(font_small), "R %.2f", ratio);
       }
 
-      it.printf(0, 16, id(font_small), "P %.1fL", id(product_volume_today).state);
-      it.printf(0, 28, id(font_small), "W %.1fL", id(waste_volume_today).state);
+      it.printf(0, 14, id(font_small), "P %.1fL", id(product_volume_today).state);
+      it.printf(0, 27, id(font_small), "W %.1fL", id(waste_volume_today).state);
+  # // it.printf(0, 0, id(font_small), "%s", id(display_status).state.c_str());
