@@ -113,7 +113,7 @@ If Home Assistant already exports to InfluxDB, these entities will become availa
 
 ## Next steps
 
-1. Update Wi-Fi credentials and board pin substitutions in `ro_meter.yaml`.
+1. Make sure `wifi_ssid` and `wifi_password` exist in `secrets.yaml`, then verify the board pin substitutions in `ro_meter.yaml`.
 2. Verify the OLED model/address and sensor GPIOs.
 3. Flash the node with ESPHome.
 4. Load `home_assistant_ro_meter_package.yaml` into Home Assistant packages.

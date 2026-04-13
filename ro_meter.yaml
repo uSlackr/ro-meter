@@ -1,8 +1,6 @@
 substitutions:
   name: ro-meter
   friendly_name: RO Meter
-  wifi_ssid: "YOUR_WIFI_SSID"
-  wifi_password: "YOUR_WIFI_PASSWORD"
 
   # Matches the common ABRobot/clone 0.42" OLED ESP32-C3 board.
   board: esp32-c3-devkitm-1
@@ -49,8 +47,8 @@ ota:
   - platform: esphome
 
 wifi:
-  ssid: ${wifi_ssid}
-  password: ${wifi_password}
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
   ap:
     ssid: "${friendly_name} Fallback"
     password: "changeme1234"
@@ -92,7 +90,7 @@ font:
       family: Roboto Mono
       weight: 500
     id: font_small
-    size: 8
+    size: 10
     bpp: 1
   - file:
       type: gfonts
