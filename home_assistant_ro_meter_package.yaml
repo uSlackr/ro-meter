@@ -1,0 +1,97 @@
+utility_meter:
+  ro_product_daily:
+    source: sensor.ro_meter_product_volume_total
+    cycle: daily
+  ro_waste_daily:
+    source: sensor.ro_meter_waste_volume_total
+    cycle: daily
+
+template:
+  - sensor:
+      - name: "RO Daily Waste Ratio"
+        unique_id: ro_daily_waste_ratio
+        unit_of_measurement: ":1"
+        icon: mdi:scale-balance
+        state: >-
+          {% set product = states('sensor.ro_product_daily') | float(0) %}
+          {% set waste = states('sensor.ro_waste_daily') | float(0) %}
+          {% if product >= 0.25 %}
+            {{ (waste / product) | round(2) }}
+          {% elif this.state not in ['unknown', 'unavailable', 'none', 'None', ''] %}
+            {{ this.state }}
+          {% else %}
+            {{ 0 }}
+          {% endif %}
+      - name: "RO Lifetime Waste Ratio"
+        unique_id: ro_lifetime_waste_ratio
+        unit_of_measurement: ":1"
+        icon: mdi:scale-balance-outline
+        state: >-
+          {% set product = states('sensor.ro_meter_product_volume_total') | float(0) %}
+          {% set waste = states('sensor.ro_meter_waste_volume_total') | float(0) %}
+          {% if product >= 0.25 %}
+            {{ (waste / product) | round(2) }}
+          {% else %}
+            {{ 0 }}
+          {% endif %}
+      - name: "RO Recovery Percent"
+        unique_id: ro_recovery_percent
+        unit_of_measurement: "%"
+        icon: mdi:water-percent
+        state: >-
+          {% set product = states('sensor.ro_product_daily') | float(0) %}
+          {% set waste = states('sensor.ro_waste_daily') | float(0) %}
+          {% set total = product + waste %}
+          {% if total >= 0.25 %}
+            {{ ((product / total) * 100) | round(1) }}
+          {% else %}
+            {{ 0 }}
+          {% endif %}
+
+sensor:
+  - platform: statistics
+    name: "RO Daily Waste Ratio 7d Mean"
+    entity_id: sensor.ro_daily_waste_ratio
+    state_characteristic: mean
+    sampling_size: 200
+    max_age:
+      days: 7
+
+input_button:
+  ro_log_maintenance:
+    name: RO Log Maintenance
+
+input_datetime:
+  ro_last_maintenance:
+    name: RO Last Maintenance
+    has_date: true
+    has_time: true
+
+automation:
+  - alias: "RO Meter Log Maintenance Timestamp"
+    id: ro_meter_log_maintenance_timestamp
+    trigger:
+      - platform: state
+        entity_id: input_button.ro_log_maintenance
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.ro_last_maintenance
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+  - alias: "RO Meter Waste Ratio Alert"
+    id: ro_meter_waste_ratio_alert
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.ro_daily_waste_ratio_7d_mean
+        above: 5
+        for:
+          hours: 6
+    action:
+      - service: persistent_notification.create
+        data:
+          title: RO Meter
+          message: >-
+            7-day average waste ratio is {{ states('sensor.ro_daily_waste_ratio_7d_mean') }}:1.
+            Review the RO system for membrane or filter degradation.

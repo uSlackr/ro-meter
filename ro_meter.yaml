@@ -1,0 +1,377 @@
+substitutions:
+  name: ro-meter
+  friendly_name: RO Meter
+  wifi_ssid: "YOUR_WIFI_SSID"
+  wifi_password: "YOUR_WIFI_PASSWORD"
+
+  # Matches the common ABRobot/clone 0.42" OLED ESP32-C3 board.
+  board: esp32-c3-devkitm-1
+
+  # Based on the board notes and schematic for the 0.42" OLED ESP32-C3 board.
+  i2c_sda_pin: GPIO5
+  i2c_scl_pin: GPIO6
+
+  # Keep external sensors off GPIO5/6 (OLED), GPIO8 (LED) and GPIO9 (BOOT).
+  product_sensor_pin: GPIO2
+  waste_sensor_pin: GPIO3
+
+  # Calibrate by measuring actual pulses per liter for each inline flow sensor.
+  product_pulses_per_liter: "450.0"
+  waste_pulses_per_liter: "450.0"
+
+  run_flow_threshold_lpm: "0.02"
+  display_ratio_sensor_entity: sensor.ro_daily_waste_ratio_7d_mean
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  project:
+    name: gjmar.ro_meter
+    version: "1.0.0"
+  on_boot:
+    priority: -10
+    then:
+      - component.update: oled_display
+
+esp32:
+  board: ${board}
+  variant: ESP32C3
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: ${wifi_ssid}
+  password: ${wifi_password}
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: "changeme1234"
+  on_connect:
+    then:
+      - lambda: |-
+          id(wifi_connected) = true;
+  on_disconnect:
+    then:
+      - lambda: |-
+          id(wifi_connected) = false;
+
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+    on_time:
+      - seconds: 0
+        minutes: 0
+        hours: 0
+        then:
+          - lambda: |-
+              id(product_today_l) = 0.0f;
+              id(waste_today_l) = 0.0f;
+          - component.update: product_volume_today
+          - component.update: waste_volume_today
+          - component.update: waste_ratio_current
+          - component.update: oled_display
+
+i2c:
+  sda: ${i2c_sda_pin}
+  scl: ${i2c_scl_pin}
+  scan: true
+
+font:
+  - file:
+      type: gfonts
+      family: Roboto Mono
+      weight: 500
+    id: font_small
+    size: 8
+    bpp: 1
+  - file:
+      type: gfonts
+      family: Roboto Mono
+      weight: 700
+    id: font_medium
+    size: 10
+    bpp: 1
+
+globals:
+  - id: wifi_connected
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: product_lifetime_l
+    type: float
+    restore_value: yes
+    initial_value: "0.0"
+  - id: waste_lifetime_l
+    type: float
+    restore_value: yes
+    initial_value: "0.0"
+  - id: product_today_l
+    type: float
+    restore_value: yes
+    initial_value: "0.0"
+  - id: waste_today_l
+    type: float
+    restore_value: yes
+    initial_value: "0.0"
+  - id: product_last_pulses
+    type: float
+    restore_value: yes
+    initial_value: "0.0"
+  - id: waste_last_pulses
+    type: float
+    restore_value: yes
+    initial_value: "0.0"
+
+output:
+  - platform: gpio
+    pin:
+      number: GPIO8
+      inverted: true
+    id: onboard_led
+
+light:
+  - platform: binary
+    id: status_led
+    name: "Status LED"
+    output: onboard_led
+    restore_mode: RESTORE_DEFAULT_OFF
+
+sensor:
+  - platform: pulse_meter
+    pin:
+      number: ${product_sensor_pin}
+      mode:
+        input: true
+        pullup: true
+    id: product_pulse_rate_raw
+    internal: true
+    unit_of_measurement: "pulses/min"
+    accuracy_decimals: 0
+    internal_filter: 100ms
+    timeout: 20s
+    total:
+      id: product_pulses_total_raw
+      internal: true
+      accuracy_decimals: 0
+
+  - platform: pulse_meter
+    pin:
+      number: ${waste_sensor_pin}
+      mode:
+        input: true
+        pullup: true
+    id: waste_pulse_rate_raw
+    internal: true
+    unit_of_measurement: "pulses/min"
+    accuracy_decimals: 0
+    internal_filter: 100ms
+    timeout: 20s
+    total:
+      id: waste_pulses_total_raw
+      internal: true
+      accuracy_decimals: 0
+
+  - platform: template
+    name: "Product Flow Rate"
+    id: product_flow_rate
+    unit_of_measurement: "L/min"
+    device_class: volume_flow_rate
+    state_class: measurement
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: |-
+      return id(product_pulse_rate_raw).state / atof("${product_pulses_per_liter}");
+
+  - platform: template
+    name: "Waste Flow Rate"
+    id: waste_flow_rate
+    unit_of_measurement: "L/min"
+    device_class: volume_flow_rate
+    state_class: measurement
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: |-
+      return id(waste_pulse_rate_raw).state / atof("${waste_pulses_per_liter}");
+
+  - platform: template
+    name: "Product Volume Total"
+    id: product_volume_total
+    unit_of_measurement: "L"
+    device_class: water
+    state_class: total_increasing
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: |-
+      const float pulses = id(product_pulses_total_raw).state;
+      if (!isnan(pulses)) {
+        if (pulses < id(product_last_pulses)) {
+          id(product_last_pulses) = pulses;
+        }
+        const float delta = pulses - id(product_last_pulses);
+        if (delta > 0.0f) {
+          const float liters = delta / atof("${product_pulses_per_liter}");
+          id(product_lifetime_l) += liters;
+          id(product_today_l) += liters;
+          id(product_last_pulses) = pulses;
+        }
+      }
+      return id(product_lifetime_l);
+
+  - platform: template
+    name: "Waste Volume Total"
+    id: waste_volume_total
+    unit_of_measurement: "L"
+    device_class: water
+    state_class: total_increasing
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: |-
+      const float pulses = id(waste_pulses_total_raw).state;
+      if (!isnan(pulses)) {
+        if (pulses < id(waste_last_pulses)) {
+          id(waste_last_pulses) = pulses;
+        }
+        const float delta = pulses - id(waste_last_pulses);
+        if (delta > 0.0f) {
+          const float liters = delta / atof("${waste_pulses_per_liter}");
+          id(waste_lifetime_l) += liters;
+          id(waste_today_l) += liters;
+          id(waste_last_pulses) = pulses;
+        }
+      }
+      return id(waste_lifetime_l);
+
+  - platform: template
+    name: "Product Volume Today"
+    id: product_volume_today
+    unit_of_measurement: "L"
+    device_class: water
+    state_class: total
+    accuracy_decimals: 2
+    update_interval: 5s
+    lambda: |-
+      return id(product_today_l);
+
+  - platform: template
+    name: "Waste Volume Today"
+    id: waste_volume_today
+    unit_of_measurement: "L"
+    device_class: water
+    state_class: total
+    accuracy_decimals: 2
+    update_interval: 5s
+    lambda: |-
+      return id(waste_today_l);
+
+  - platform: template
+    name: "Waste Ratio Current"
+    id: waste_ratio_current
+    unit_of_measurement: ":1"
+    icon: mdi:scale-balance
+    accuracy_decimals: 2
+    update_interval: 5s
+    lambda: |-
+      const bool running = id(ro_run_active).state;
+      if (running && id(product_flow_rate).state >= atof("${run_flow_threshold_lpm}")) {
+        return id(waste_flow_rate).state / id(product_flow_rate).state;
+      }
+      if (id(product_today_l) >= 0.25f) {
+        return id(waste_today_l) / id(product_today_l);
+      }
+      if (id(ha_ratio_display).has_state()) {
+        return id(ha_ratio_display).state;
+      }
+      return NAN;
+
+  - platform: homeassistant
+    id: ha_ratio_display
+    entity_id: ${display_ratio_sensor_entity}
+    internal: true
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+binary_sensor:
+  - platform: status
+    name: "Status"
+
+  - platform: template
+    name: "Run Active"
+    id: ro_run_active
+    lambda: |-
+      return id(product_flow_rate).state >= atof("${run_flow_threshold_lpm}") ||
+             id(waste_flow_rate).state >= atof("${run_flow_threshold_lpm}");
+    filters:
+      - delayed_on: 10s
+      - delayed_off: 30s
+
+text_sensor:
+  - platform: template
+    name: "Display Status"
+    id: display_status
+    update_interval: 5s
+    lambda: |-
+      if (!id(wifi_connected)) {
+        return {"WIFI"};
+      }
+      if (id(ro_run_active).state) {
+        return {"RUN"};
+      }
+      return {"IDLE"};
+
+interval:
+  - interval: 5s
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(wifi_connected);'
+          then:
+            - light.turn_on: status_led
+      - if:
+          condition:
+            lambda: 'return id(wifi_connected) && id(ro_run_active).state;'
+          then:
+            - light.turn_on: status_led
+      - if:
+          condition:
+            lambda: 'return id(wifi_connected) && !id(ro_run_active).state;'
+          then:
+            - light.turn_off: status_led
+
+button:
+  - platform: restart
+    name: "Restart"
+
+display:
+  - platform: ssd1306_i2c
+    id: oled_display
+    model: "SSD1306 72x40"
+    address: 0x3C
+    update_interval: 5s
+    lambda: |-
+      it.clear();
+
+      float ratio = NAN;
+      if (id(waste_ratio_current).has_state()) {
+        ratio = id(waste_ratio_current).state;
+      }
+
+      it.printf(0, 0, id(font_small), "%s", id(display_status).state.c_str());
+
+      if (isnan(ratio)) {
+        it.printf(25, 0, id(font_medium), "R --");
+      } else {
+        it.printf(25, 0, id(font_medium), "R %.2f", ratio);
+      }
+
+      it.printf(0, 16, id(font_small), "P %.1fL", id(product_volume_today).state);
+      it.printf(0, 28, id(font_small), "W %.1fL", id(waste_volume_today).state);
