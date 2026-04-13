@@ -15,11 +15,11 @@ substitutions:
   product_sensor_pin: GPIO2
   waste_sensor_pin: GPIO3
 
-  # FL-S402B-family sensors are commonly listed around F = 32 * Q (Hz, Q in L/min),
-  # which implies about 1920 pulses/L. Some listings claim 38 * Q, so recalibrate
-  # both sensors after installation and treat these as starting values only.
-  product_pulses_per_liter: "1920.0"
-  waste_pulses_per_liter: "1920.0"
+  # Your sensor listing reports F = 23 * Q (Hz, Q in L/min),
+  # which implies about 1380 pulses/L. Recalibrate both sensors after
+  # installation and treat these as starting values only.
+  product_pulses_per_liter: "1380.0"
+  waste_pulses_per_liter: "1380.0"
 
   run_flow_threshold_lpm: "0.02"
   display_ratio_sensor_entity: sensor.ro_daily_waste_ratio_7d_mean

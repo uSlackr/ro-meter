@@ -63,10 +63,11 @@ The current config now assumes the flow meters are `FL-S402B` units.
 
 Published specs for this family are inconsistent across sellers and reposted datasheets:
 
-- multiple manuals list `F = 32 x Q` where `Q` is in L/min, which implies about `1920 pulses/liter`
+- your sensor listing reports `F = 23 x Q` where `Q` is in L/min, which implies about `1380 pulses/liter`
+- multiple manuals list `F = 32 x Q`, which implies about `1920 pulses/liter`
 - some seller pages list `F = 38 x Q`, which implies about `2280 pulses/liter`
 
-Because of that, `ro_meter.yaml` now starts at `1920 pulses/liter`, but you should treat that only as a first-pass estimate and calibrate both sensors after installation.
+Because of that, `ro_meter.yaml` now starts at `1380 pulses/liter` to match your specific listing, but you should treat that only as a first-pass estimate and calibrate both sensors after installation.
 
 Each sensor uses a `*_pulses_per_liter` substitution. Start with the default value, then calibrate:
 
@@ -75,7 +76,7 @@ Each sensor uses a `*_pulses_per_liter` substitution. Start with the default val
 3. Set `pulses_per_liter = measured_pulses / measured_liters`.
 4. Repeat for both the product and waste sensors.
 
-If your measured result is closer to the `38 x Q` family behavior, update the corresponding constant toward `2280`.
+If your measured result is closer to one of the other common variants, update the corresponding constant toward `1920` or `2280`.
 
 ## FL-S402B wiring notes
 
