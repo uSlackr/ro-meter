@@ -59,12 +59,42 @@ The flow sensor pins are still a project choice. The current defaults intentiona
 
 ## Calibration
 
-Each sensor uses a `*_pulses_per_liter` substitution. Start with the placeholder values, then calibrate:
+The current config now assumes the flow meters are `FL-S402B` units.
+
+Published specs for this family are inconsistent across sellers and reposted datasheets:
+
+- multiple manuals list `F = 32 x Q` where `Q` is in L/min, which implies about `1920 pulses/liter`
+- some seller pages list `F = 38 x Q`, which implies about `2280 pulses/liter`
+
+Because of that, `ro_meter.yaml` now starts at `1920 pulses/liter`, but you should treat that only as a first-pass estimate and calibrate both sensors after installation.
+
+Each sensor uses a `*_pulses_per_liter` substitution. Start with the default value, then calibrate:
 
 1. Run a measured amount of water through one sensor.
 2. Read the pulse total in Home Assistant or the ESPHome logs.
 3. Set `pulses_per_liter = measured_pulses / measured_liters`.
 4. Repeat for both the product and waste sensors.
+
+If your measured result is closer to the `38 x Q` family behavior, update the corresponding constant toward `2280`.
+
+## FL-S402B wiring notes
+
+For the common `FL-S402B` / `YF-S402B` style sensors, the published wire colors are typically:
+
+- red: sensor supply
+- black: ground
+- yellow: pulse output
+
+Important: many product listings describe the yellow lead as an **NPN pulse output**. That usually means the sensor output should be pulled up to the microcontroller logic voltage rather than fed directly with a 5V-high signal.
+
+For this ESP32-C3 build:
+
+- power the sensor from the board's 5V supply if required by the sensor
+- share ground between the sensor and ESP32-C3
+- feed the pulse line to the ESP32-C3 GPIO with a **3.3V-safe pull-up**
+- do not intentionally drive a raw 5V logic-high into an ESP32-C3 GPIO
+
+The current ESPHome config enables the internal pull-up on the pulse pins, which is a good match if your specific sensor behaves like an open-collector / NPN output. If your exact sensor module actively drives 5V on the signal line, add level shifting or a resistor-divider approach before connecting it to the ESP32-C3.
 
 ## Home Assistant and InfluxDB
 
