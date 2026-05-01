@@ -1,6 +1,12 @@
 # RO Meter
 
-This workspace contains a first-pass ESPHome configuration for an RO water meter built around an ESP32-C3 OLED dev board plus two inline pulse flow sensors:
+This workspace contains an ESPHome configuration for an RO water meter built around an ESP32-C3 OLED dev board plus two inline pulse flow sensors.
+
+The current design measures:
+
+- product water directly
+- fresh-water intake directly
+- waste water as a derived value: `intake - product`
 
 - `ro_meter.yaml` is the firmware config for the ESP32-C3.
 - `home_assistant_ro_meter_package.yaml` is a Home Assistant package that derives daily ratio metrics from the ESPHome totals.
@@ -10,11 +16,14 @@ This workspace contains a first-pass ESPHome configuration for an RO water meter
 The ESPHome node publishes:
 
 - purified water flow rate
-- waste water flow rate
+- intake water flow rate
+- derived waste water flow rate
 - purified water lifetime total
-- waste water lifetime total
+- intake water lifetime total
+- derived waste water lifetime total
 - purified water today total
-- waste water today total
+- intake water today total
+- derived waste water today total
 - current waste ratio
 - run active state
 
@@ -24,7 +33,7 @@ The OLED shows:
 
 - current ratio when the system is running
 - imported rolling daily ratio when the system is idle, if that Home Assistant entity exists
-- today's purified and waste totals
+- today's purified and intake totals
 - a short status label: `RUN`, `IDLE`, or `WIFI`
 
 ## Board-specific details confirmed
@@ -46,8 +55,8 @@ The board details are now much tighter, but you should still verify the sensor w
 - `board: esp32-c3-devkitm-1`
 - `i2c_sda_pin: GPIO5`
 - `i2c_scl_pin: GPIO6`
-- `product_sensor_pin: GPIO2`
-- `waste_sensor_pin: GPIO3`
+- `product_sensor_pin: GPIO3`
+- `intake_sensor_pin: GPIO4`
 - `model: "SSD1306 72x40"`
 - `address: 0x3C`
 
@@ -56,6 +65,8 @@ The flow sensor pins are still a project choice. The current defaults intentiona
 - `GPIO5` and `GPIO6` because they are used by the OLED
 - `GPIO8` because it drives the onboard LED
 - `GPIO9` because it is the BOOT button
+
+The current defaults now use adjacent `GPIO3` and `GPIO4` so you can land both sensor signals on consecutive screw terminals.
 
 ## Calibration
 
@@ -74,7 +85,7 @@ Each sensor uses a `*_pulses_per_liter` substitution. Start with the default val
 1. Run a measured amount of water through one sensor.
 2. Read the pulse total in Home Assistant or the ESPHome logs.
 3. Set `pulses_per_liter = measured_pulses / measured_liters`.
-4. Repeat for both the product and waste sensors.
+4. Repeat for both the product and intake sensors.
 
 If your measured result is closer to one of the other common variants, update the corresponding constant toward `1920` or `2280`.
 
@@ -101,7 +112,8 @@ The current ESPHome config enables the internal pull-up on the pulse pins, which
 
 `home_assistant_ro_meter_package.yaml` creates:
 
-- daily product and waste utility meters
+- daily product and intake utility meters
+- daily derived waste volume
 - daily waste ratio
 - lifetime waste ratio
 - recovery percent

@@ -2,19 +2,30 @@ utility_meter:
   ro_product_daily:
     source: sensor.ro_meter_product_volume_total
     cycle: daily
-  ro_waste_daily:
-    source: sensor.ro_meter_waste_volume_total
+  ro_intake_daily:
+    source: sensor.ro_meter_intake_volume_total
     cycle: daily
 
 template:
   - sensor:
+      - name: "RO Daily Waste Volume"
+        unique_id: ro_daily_waste_volume
+        unit_of_measurement: "L"
+        device_class: water
+        state_class: measurement
+        state: >-
+          {% set product = states('sensor.ro_product_daily') | float(0) %}
+          {% set intake = states('sensor.ro_intake_daily') | float(0) %}
+          {% set waste = intake - product %}
+          {{ ([waste, 0] | max) | round(2) }}
       - name: "RO Daily Waste Ratio"
         unique_id: ro_daily_waste_ratio
         unit_of_measurement: ":1"
         icon: mdi:scale-balance
         state: >-
           {% set product = states('sensor.ro_product_daily') | float(0) %}
-          {% set waste = states('sensor.ro_waste_daily') | float(0) %}
+          {% set intake = states('sensor.ro_intake_daily') | float(0) %}
+          {% set waste = [intake - product, 0] | max %}
           {% if product >= 0.25 %}
             {{ (waste / product) | round(2) }}
           {% elif this.state not in ['unknown', 'unavailable', 'none', 'None', ''] %}
@@ -28,7 +39,8 @@ template:
         icon: mdi:scale-balance-outline
         state: >-
           {% set product = states('sensor.ro_meter_product_volume_total') | float(0) %}
-          {% set waste = states('sensor.ro_meter_waste_volume_total') | float(0) %}
+          {% set intake = states('sensor.ro_meter_intake_volume_total') | float(0) %}
+          {% set waste = [intake - product, 0] | max %}
           {% if product >= 0.25 %}
             {{ (waste / product) | round(2) }}
           {% else %}
@@ -40,10 +52,9 @@ template:
         icon: mdi:water-percent
         state: >-
           {% set product = states('sensor.ro_product_daily') | float(0) %}
-          {% set waste = states('sensor.ro_waste_daily') | float(0) %}
-          {% set total = product + waste %}
-          {% if total >= 0.25 %}
-            {{ ((product / total) * 100) | round(1) }}
+          {% set intake = states('sensor.ro_intake_daily') | float(0) %}
+          {% if intake >= 0.25 %}
+            {{ ((product / intake) * 100) | round(1) }}
           {% else %}
             {{ 0 }}
           {% endif %}

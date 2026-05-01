@@ -9,15 +9,17 @@ substitutions:
   i2c_sda_pin: GPIO5
   i2c_scl_pin: GPIO6
 
-  # Keep external sensors off GPIO5/6 (OLED), GPIO8 (LED) and GPIO9 (BOOT).
-  product_sensor_pin: GPIO2
-  waste_sensor_pin: GPIO3
+  # Use adjacent header pins for screw terminals.
+  # GPIO3/GPIO4 are the best consecutive pair on this board:
+  # GPIO5/6 are used by the OLED, GPIO8 drives the LED, and GPIO9 is BOOT.
+  product_sensor_pin: GPIO3
+  intake_sensor_pin: GPIO4
 
   # Your sensor listing reports F = 23 * Q (Hz, Q in L/min),
   # which implies about 1380 pulses/L. Recalibrate both sensors after
   # installation and treat these as starting values only.
   product_pulses_per_liter: "1380.0"
-  waste_pulses_per_liter: "1380.0"
+  intake_pulses_per_liter: "1380.0"
 
   run_flow_threshold_lpm: "0.02"
   display_ratio_sensor_entity: sensor.ro_daily_waste_ratio_7d_mean
@@ -73,8 +75,9 @@ time:
         then:
           - lambda: |-
               id(product_today_l) = 0.0f;
-              id(waste_today_l) = 0.0f;
+              id(intake_today_l) = 0.0f;
           - component.update: product_volume_today
+          - component.update: intake_volume_today
           - component.update: waste_volume_today
           - component.update: waste_ratio_current
           - component.update: oled_display
@@ -109,7 +112,7 @@ globals:
     type: float
     restore_value: yes
     initial_value: "0.0"
-  - id: waste_lifetime_l
+  - id: intake_lifetime_l
     type: float
     restore_value: yes
     initial_value: "0.0"
@@ -117,7 +120,7 @@ globals:
     type: float
     restore_value: yes
     initial_value: "0.0"
-  - id: waste_today_l
+  - id: intake_today_l
     type: float
     restore_value: yes
     initial_value: "0.0"
@@ -125,7 +128,7 @@ globals:
     type: float
     restore_value: yes
     initial_value: "0.0"
-  - id: waste_last_pulses
+  - id: intake_last_pulses
     type: float
     restore_value: yes
     initial_value: "0.0"
@@ -164,18 +167,18 @@ sensor:
 
   - platform: pulse_meter
     pin:
-      number: ${waste_sensor_pin}
+      number: ${intake_sensor_pin}
       mode:
         input: true
         pullup: true
-    id: waste_pulse_rate_raw
+    id: intake_pulse_rate_raw
     internal: true
     unit_of_measurement: "pulses/min"
     accuracy_decimals: 0
     internal_filter: 100ms
     timeout: 20s
     total:
-      id: waste_pulses_total_raw
+      id: intake_pulses_total_raw
       internal: true
       accuracy_decimals: 0
 
@@ -191,15 +194,15 @@ sensor:
       return id(product_pulse_rate_raw).state / atof("${product_pulses_per_liter}");
 
   - platform: template
-    name: "Waste Flow Rate"
-    id: waste_flow_rate
+    name: "Intake Flow Rate"
+    id: intake_flow_rate
     unit_of_measurement: "L/min"
     device_class: volume_flow_rate
     state_class: measurement
     accuracy_decimals: 3
     update_interval: 5s
     lambda: |-
-      return id(waste_pulse_rate_raw).state / atof("${waste_pulses_per_liter}");
+      return id(intake_pulse_rate_raw).state / atof("${intake_pulses_per_liter}");
 
   - platform: template
     name: "Product Volume Total"
@@ -226,28 +229,28 @@ sensor:
       return id(product_lifetime_l);
 
   - platform: template
-    name: "Waste Volume Total"
-    id: waste_volume_total
+    name: "Intake Volume Total"
+    id: intake_volume_total
     unit_of_measurement: "L"
     device_class: water
     state_class: total_increasing
     accuracy_decimals: 3
     update_interval: 5s
     lambda: |-
-      const float pulses = id(waste_pulses_total_raw).state;
+      const float pulses = id(intake_pulses_total_raw).state;
       if (!isnan(pulses)) {
-        if (pulses < id(waste_last_pulses)) {
-          id(waste_last_pulses) = pulses;
+        if (pulses < id(intake_last_pulses)) {
+          id(intake_last_pulses) = pulses;
         }
-        const float delta = pulses - id(waste_last_pulses);
+        const float delta = pulses - id(intake_last_pulses);
         if (delta > 0.0f) {
-          const float liters = delta / atof("${waste_pulses_per_liter}");
-          id(waste_lifetime_l) += liters;
-          id(waste_today_l) += liters;
-          id(waste_last_pulses) = pulses;
+          const float liters = delta / atof("${intake_pulses_per_liter}");
+          id(intake_lifetime_l) += liters;
+          id(intake_today_l) += liters;
+          id(intake_last_pulses) = pulses;
         }
       }
-      return id(waste_lifetime_l);
+      return id(intake_lifetime_l);
 
   - platform: template
     name: "Product Volume Today"
@@ -261,15 +264,51 @@ sensor:
       return id(product_today_l);
 
   - platform: template
-    name: "Waste Volume Today"
-    id: waste_volume_today
+    name: "Intake Volume Today"
+    id: intake_volume_today
     unit_of_measurement: "L"
     device_class: water
     state_class: total
     accuracy_decimals: 2
     update_interval: 5s
     lambda: |-
-      return id(waste_today_l);
+      return id(intake_today_l);
+
+  - platform: template
+    name: "Waste Flow Rate"
+    id: waste_flow_rate
+    unit_of_measurement: "L/min"
+    device_class: volume_flow_rate
+    state_class: measurement
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: |-
+      const float waste = id(intake_flow_rate).state - id(product_flow_rate).state;
+      return waste > 0.0f ? waste : 0.0f;
+
+  - platform: template
+    name: "Waste Volume Total"
+    id: waste_volume_total
+    unit_of_measurement: "L"
+    device_class: water
+    state_class: measurement
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: |-
+      const float waste = id(intake_lifetime_l) - id(product_lifetime_l);
+      return waste > 0.0f ? waste : 0.0f;
+
+  - platform: template
+    name: "Waste Volume Today"
+    id: waste_volume_today
+    unit_of_measurement: "L"
+    device_class: water
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 5s
+    lambda: |-
+      const float waste = id(intake_today_l) - id(product_today_l);
+      return waste > 0.0f ? waste : 0.0f;
 
   - platform: template
     name: "Waste Ratio Current"
@@ -284,7 +323,8 @@ sensor:
         return id(waste_flow_rate).state / id(product_flow_rate).state;
       }
       if (id(product_today_l) >= 0.25f) {
-        return id(waste_today_l) / id(product_today_l);
+        const float waste = id(intake_today_l) - id(product_today_l);
+        return (waste > 0.0f ? waste : 0.0f) / id(product_today_l);
       }
       if (id(ha_ratio_display).has_state()) {
         return id(ha_ratio_display).state;
@@ -309,7 +349,7 @@ binary_sensor:
     id: ro_run_active
     lambda: |-
       return id(product_flow_rate).state >= atof("${run_flow_threshold_lpm}") ||
-             id(waste_flow_rate).state >= atof("${run_flow_threshold_lpm}");
+             id(intake_flow_rate).state >= atof("${run_flow_threshold_lpm}");
     filters:
       - delayed_on: 10s
       - delayed_off: 30s
@@ -372,5 +412,5 @@ display:
       }
 
       it.printf(0, 14, id(font_small), "P %.1fL", id(product_volume_today).state);
-      it.printf(0, 27, id(font_small), "W %.1fL", id(waste_volume_today).state);
+      it.printf(0, 27, id(font_small), "I %.1fL", id(intake_volume_today).state);
   # // it.printf(0, 0, id(font_small), "%s", id(display_status).state.c_str());
